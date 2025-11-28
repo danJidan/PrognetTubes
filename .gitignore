@@ -1,0 +1,10 @@
+# Build outputs
+/out/
+
+# IDE/Editor settings
+/.vscode/
+/.idea/
+
+# System files
+Thumbs.db
+.DS_Store
