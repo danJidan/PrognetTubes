@@ -1,19 +1,11 @@
 package com.pasarlive.client.ui;
 
 import com.pasarlive.model.MarketDataModel;
-import java.awt.Color;
-import java.awt.Dimension;
-import java.awt.Font;
+import java.awt.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
-import javax.swing.BorderFactory;
-import javax.swing.JScrollPane;
-import javax.swing.JTable;
-import javax.swing.ListSelectionModel;
-import javax.swing.SwingConstants;
-import javax.swing.event.ListSelectionEvent;
-import javax.swing.event.ListSelectionListener;
+import javax.swing.*;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.JTableHeader;
@@ -25,93 +17,107 @@ public class CommodityTableManager {
     private Consumer<String> selectionListener;
 
     public CommodityTableManager() {
-        tableModel = new DefaultTableModel(new Object[]{"Komoditas", "Perubahan", "Harga"}, 0) {
+        // Kolom: Nama, Harga, Perubahan (Icon)
+        tableModel = new DefaultTableModel(new Object[]{"Komoditas", "Harga", "Tren"}, 0) {
             @Override
-            public boolean isCellEditable(int row, int column) {
-                return false;
-            }
+            public boolean isCellEditable(int row, int column) { return false; }
         };
         table = new JTable(tableModel);
-        configureTableAppearance();
-        table.getSelectionModel().addListSelectionListener(new TableSelectionListener());
+        configureModernTable();
+        table.getSelectionModel().addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting() && table.getSelectedRow() >= 0) {
+                if (selectionListener != null && table.getSelectedRow() < commodityIds.size()) {
+                    selectionListener.accept(commodityIds.get(table.getSelectedRow()));
+                }
+            }
+        });
     }
 
-    public void setSelectionListener(Consumer<String> listener) {
-        this.selectionListener = listener;
-    }
+    public void setSelectionListener(Consumer<String> listener) { this.selectionListener = listener; }
 
     public JScrollPane createScrollPane() {
         JScrollPane scrollPane = new JScrollPane(table);
-        scrollPane.setBorder(BorderFactory.createEmptyBorder());
+        scrollPane.setBorder(BorderFactory.createEmptyBorder()); // Hilangkan border tajam
         scrollPane.getViewport().setBackground(Color.WHITE);
         return scrollPane;
     }
 
-    public void refreshRows(List<MarketDataModel.CommodityData> commodities, String selectedCommodityId) {
+    public void refreshRows(List<MarketDataModel.CommodityData> commodities, String selectedId) {
         tableModel.setRowCount(0);
         commodityIds.clear();
-        for (MarketDataModel.CommodityData commodity : commodities) {
+        int selectedRow = -1;
+
+        for (int i = 0; i < commodities.size(); i++) {
+            MarketDataModel.CommodityData c = commodities.get(i);
+            int diff = c.price - c.yesterdayPrice;
+            
+            // Format data
             tableModel.addRow(new Object[]{
-                commodity.name,
-                buildChangeLabel(commodity.price - commodity.yesterdayPrice),
-                String.format("Rp %,d", commodity.price)
+                c.name,
+                String.format("Rp %,d", c.price),
+                diff // Kita kirim integer-nya, nanti Renderer yang ubah jadi panah
             });
-            commodityIds.add(commodity.id);
+            commodityIds.add(c.id);
+            if (c.id.equals(selectedId)) selectedRow = i;
         }
-        if (selectedCommodityId != null) {
-            selectCommodity(selectedCommodityId);
-        }
+
+        if (selectedRow >= 0) table.setRowSelectionInterval(selectedRow, selectedRow);
     }
 
-    public void selectCommodity(String commodityId) {
-        int rowIndex = commodityIds.indexOf(commodityId);
-        if (rowIndex >= 0 && rowIndex < table.getRowCount()) {
-            table.setRowSelectionInterval(rowIndex, rowIndex);
-        }
+    public void selectCommodity(String id) {
+        int idx = commodityIds.indexOf(id);
+        if (idx >= 0) table.setRowSelectionInterval(idx, idx);
     }
 
-    private void configureTableAppearance() {
-        table.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        table.setRowHeight(32);
-        table.setShowGrid(false);
-        table.setIntercellSpacing(new Dimension(0, 0));
-        table.setSelectionBackground(Color.WHITE);
+    private void configureModernTable() {
+        table.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        table.setRowHeight(45); // Baris lebih tinggi biar lega
+        table.setShowVerticalLines(false);
+        table.setShowHorizontalLines(true);
+        table.setGridColor(new Color(240, 240, 240));
+        table.setSelectionBackground(new Color(236, 240, 241)); // Warna select lembut
         table.setSelectionForeground(Color.BLACK);
-        table.setFocusable(false);
-        table.setRowSelectionAllowed(true);
-        table.setColumnSelectionAllowed(false);
-
+        
+        // Header Cantik
         JTableHeader header = table.getTableHeader();
         header.setFont(new Font("Segoe UI", Font.BOLD, 12));
-        header.setBackground(new Color(248, 248, 248));
-        header.setForeground(Color.DARK_GRAY);
-        header.setReorderingAllowed(false);
-
-        DefaultTableCellRenderer rightAlignRenderer = new DefaultTableCellRenderer();
-        rightAlignRenderer.setHorizontalAlignment(SwingConstants.RIGHT);
-        table.getColumnModel().getColumn(2).setCellRenderer(rightAlignRenderer);
+        header.setBackground(Color.WHITE);
+        header.setForeground(Color.GRAY);
+        header.setPreferredSize(new Dimension(0, 40));
+        
+        // Custom Renderer (Pewarnaan)
+        table.setDefaultRenderer(Object.class, new ModernCellRenderer());
     }
 
-    private String buildChangeLabel(int priceDiff) {
-        if (priceDiff > 0) {
-            return String.format("↗ +%,d", priceDiff);
-        }
-        if (priceDiff < 0) {
-            return String.format("↘ %,d", priceDiff);
-        }
-        return "— +0";
-    }
-
-    private class TableSelectionListener implements ListSelectionListener {
+    // Kelas dalam untuk mengatur warna teks (Merah/Hijau)
+    private static class ModernCellRenderer extends DefaultTableCellRenderer {
         @Override
-        public void valueChanged(ListSelectionEvent e) {
-            if (e.getValueIsAdjusting()) {
-                return;
+        public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
+            super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+            setBorder(BorderFactory.createEmptyBorder(0, 10, 0, 10)); // Padding kiri kanan cell
+            
+            if (column == 2) { // Kolom Tren
+                int diff = (Integer) value;
+                if (diff > 0) {
+                    setText("▲ Naik");
+                    setForeground(UIComponentFactory.COLOR_SUCCESS);
+                } else if (diff < 0) {
+                    setText("▼ Turun");
+                    setForeground(UIComponentFactory.COLOR_DANGER);
+                } else {
+                    setText("— Stabil");
+                    setForeground(Color.GRAY);
+                }
+                setHorizontalAlignment(JLabel.RIGHT);
+            } else if (column == 1) { // Kolom Harga
+                setForeground(UIComponentFactory.COLOR_PRIMARY);
+                setFont(getFont().deriveFont(Font.BOLD));
+                setHorizontalAlignment(JLabel.RIGHT);
+            } else { // Kolom Nama
+                setForeground(Color.BLACK);
+                setHorizontalAlignment(JLabel.LEFT);
             }
-            int selectedRow = table.getSelectedRow();
-            if (selectedRow >= 0 && selectedRow < commodityIds.size() && selectionListener != null) {
-                selectionListener.accept(commodityIds.get(selectedRow));
-            }
+            return this;
         }
     }
 }
