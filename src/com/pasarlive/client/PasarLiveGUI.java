@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Locale;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
+import javax.swing.border.LineBorder;
 
 public class PasarLiveGUI extends JFrame {
     private static final String SERVER_HOST = "localhost";
@@ -30,21 +31,38 @@ public class PasarLiveGUI extends JFrame {
     // GUI components
     private CommodityChartPanel chartPanel;
     private JLabel updateTimeLabel;
-    private CommodityTableManager commodityTableManager;
+    private ModernCommodityList commodityList;
     private JLabel selectedCommodityLabel;
     private JLabel currentPriceLabel;
     private JLabel priceChangeLabel;
-    private PriceDetailCard yesterdayPriceCard;
-    private PriceDetailCard todayPriceCard;
-    private PriceDetailCard priceDiffCard;
-    private PriceDetailCard percentageCard;
-    private JTextArea reportTextArea;
+    private JLabel categoryBadge;
+    private ModernPriceDetailCard yesterdayPriceCard;
+    private ModernPriceDetailCard todayPriceCard;
+    private ModernPriceDetailCard priceDiffCard;
+    private ModernPriceDetailCard percentageCard;
     private PasarLiveAdminUI adminUI;
 
     // Data model
     private final MarketDataModel dataModel = new MarketDataModel();
     private MarketDataModel.CommodityData selectedCommodity;
     private String selectedCommodityId;
+
+    // Modern color scheme
+    private static final Color PRIMARY_GREEN = new Color(16, 185, 129);
+    private static final Color BACKGROUND_GRAY = new Color(249, 250, 251);
+    private static final Color CARD_WHITE = Color.WHITE;
+    private static final Color TEXT_DARK = new Color(17, 24, 39);
+    private static final Color TEXT_GRAY = new Color(107, 114, 128);
+    private static final Color BORDER_LIGHT = new Color(229, 231, 235);
+    private static final Color RED_ACCENT = new Color(239, 68, 68);
+    private static final Color GREEN_ACCENT = new Color(34, 197, 94);
+    private static final Color BLUE_ACCENT = new Color(59, 130, 246);
+    
+    // Detail card colors
+    private static final Color BLUE_LIGHT_BG = new Color(219, 234, 254);
+    private static final Color GREEN_LIGHT_BG = new Color(220, 252, 231);
+    private static final Color RED_LIGHT_BG = new Color(254, 226, 226);
+    private static final Color YELLOW_LIGHT_BG = new Color(254, 243, 199);
 
     public PasarLiveGUI() {
         initializeGUI();
@@ -55,23 +73,20 @@ public class PasarLiveGUI extends JFrame {
     private void bootstrapFromModel() {
         selectedCommodity = dataModel.getDefaultCommodity();
         selectedCommodityId = selectedCommodity != null ? selectedCommodity.id : null;
-        refreshUserCommodityTable();
+        refreshCommodityList();
         SwingUtilities.invokeLater(() -> {
-            if (commodityTableManager != null && selectedCommodityId != null) {
-                commodityTableManager.selectCommodity(selectedCommodityId);
+            if (commodityList != null && selectedCommodityId != null) {
+                commodityList.selectCommodity(selectedCommodityId);
             }
             updateChartAndDetails();
         });
     }
 
-    /**
-     * Initialize GUI components
-     */
     private void initializeGUI() {
-        setTitle("PasarLive - Real-time Mutual Prices");
-        setSize(900, 600);
+        setTitle("PasarLive - Real-time Market Prices");
+        setSize(1400, 850);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setLayout(new BorderLayout(10, 10));
+        setLayout(new BorderLayout());
         
         try {
             UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
@@ -79,230 +94,421 @@ public class PasarLiveGUI extends JFrame {
             // Use default look and feel
         }
         
-        JPanel mainPanel = UIComponentFactory.createWhitePanel(new BorderLayout(10, 10), 15);
+        // Main container with background color
+        JPanel mainContainer = new JPanel(new BorderLayout());
+        mainContainer.setBackground(BACKGROUND_GRAY);
         
-        mainPanel.add(createHeaderPanel(), BorderLayout.NORTH);
+        // Header
+        mainContainer.add(createModernHeader(), BorderLayout.NORTH);
         
-        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
-        splitPane.setLeftComponent(createChartPanel());
-        splitPane.setRightComponent(createCommodityListPanel());
-        splitPane.setDividerLocation(450);
+        // Content area
+        JPanel contentPanel = new JPanel(new BorderLayout(20, 20));
+        contentPanel.setBackground(BACKGROUND_GRAY);
+        contentPanel.setBorder(new EmptyBorder(20, 20, 20, 20));
+        
+        // Left side - Chart and details
+        JPanel leftPanel = createModernChartPanel();
+        
+        // Right side - Commodity list
+        JPanel rightPanel = createModernCommodityListPanel();
+        
+        // Split pane
+        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftPanel, rightPanel);
+        splitPane.setDividerLocation(850);
         splitPane.setBorder(null);
-        mainPanel.add(splitPane, BorderLayout.CENTER);
+        splitPane.setBackground(BACKGROUND_GRAY);
         
-        add(mainPanel);
+        contentPanel.add(splitPane, BorderLayout.CENTER);
+        
+        // Bottom section - Report
+        contentPanel.add(createReportSection(), BorderLayout.SOUTH);
+        
+        mainContainer.add(contentPanel, BorderLayout.CENTER);
+        add(mainContainer);
     }
     
-    /**
-     * Create header panel
-     */
-    private JPanel createHeaderPanel() {
-        JPanel headerPanel = UIComponentFactory.createWhitePanel(new BorderLayout());
-        
-        JPanel titlePanel = UIComponentFactory.createWhitePanel(new FlowLayout(FlowLayout.LEFT));
-        
-        JLabel logoLabel = new JLabel("🏪");
-        logoLabel.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 32));
-        
-        JLabel titleLabel = new JLabel("PasarLive");
-        titleLabel.setFont(new Font("Segoe UI", Font.BOLD, 24));
-        titleLabel.setForeground(new Color(34, 139, 34));
-        
-        JLabel subtitleLabel = new JLabel("Real-time Mutual Prices");
-        subtitleLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        subtitleLabel.setForeground(Color.GRAY);
-        
-        titlePanel.add(logoLabel);
-        titlePanel.add(titleLabel);
-        titlePanel.add(Box.createHorizontalStrut(10));
-        titlePanel.add(subtitleLabel);
-        
-        JButton loginAdminButton = new JButton("🔐 Login Admin");
-        UIComponentFactory.applyFlatButtonStyle(
-            loginAdminButton,
-            new Font("Segoe UI", Font.BOLD, 12),
-            new Color(52, 152, 219),
-            Color.WHITE
-        );
-        loginAdminButton.setPreferredSize(new Dimension(140, 35));
-        loginAdminButton.addActionListener(e -> getAdminUI().showLoginDialog());
-        
-        JPanel buttonPanel = UIComponentFactory.createWhitePanel(new FlowLayout(FlowLayout.RIGHT));
-        buttonPanel.add(loginAdminButton);
-        
-        headerPanel.add(titlePanel, BorderLayout.WEST);
-        headerPanel.add(buttonPanel, BorderLayout.EAST);
-        return headerPanel;
-    }
-    
-    /**
-     * Create chart panel (left side)
-     */
-    private JPanel createChartPanel() {
-        JPanel panel = UIComponentFactory.createWhitePanel(new BorderLayout(10, 10));
-        panel.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(new Color(230, 230, 230)),
-            new EmptyBorder(15, 15, 15, 15)
+    private JPanel createModernHeader() {
+        JPanel header = new JPanel(new BorderLayout());
+        header.setBackground(CARD_WHITE);
+        header.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createMatteBorder(0, 0, 1, 0, BORDER_LIGHT),
+            new EmptyBorder(15, 25, 15, 25)
         ));
         
-        // Title
+        // Left side - Logo and title
+        JPanel leftPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 15, 0));
+        leftPanel.setBackground(CARD_WHITE);
+        
+        // Logo with modern icon background
+        JPanel logoContainer = new JPanel();
+        logoContainer.setLayout(new BorderLayout());
+        logoContainer.setBackground(PRIMARY_GREEN);
+        logoContainer.setPreferredSize(new Dimension(40, 40));
+        logoContainer.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+        
+        JLabel logoLabel = new JLabel("📊");
+        logoLabel.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 24));
+        logoLabel.setHorizontalAlignment(SwingConstants.CENTER);
+        logoContainer.add(logoLabel, BorderLayout.CENTER);
+        
+        // Title and subtitle
+        JPanel titlePanel = new JPanel(new GridLayout(2, 1, 0, 2));
+        titlePanel.setBackground(CARD_WHITE);
+        
+        JLabel titleLabel = new JLabel("PasarLive");
+        titleLabel.setFont(new Font("Segoe UI", Font.BOLD, 20));
+        titleLabel.setForeground(TEXT_DARK);
+        
+        JLabel subtitleLabel = new JLabel("Real-time Market Prices");
+        subtitleLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        subtitleLabel.setForeground(TEXT_GRAY);
+        
+        titlePanel.add(titleLabel);
+        titlePanel.add(subtitleLabel);
+        
+        leftPanel.add(logoContainer);
+        leftPanel.add(titlePanel);
+        
+        // Right side - User info and buttons
+        JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 15, 0));
+        rightPanel.setBackground(CARD_WHITE);
+        
+        // User indicator
+        JLabel userIcon = new JLabel("👤");
+        userIcon.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 18));
+        
+        JLabel userName = new JLabel("Iam");
+        userName.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        userName.setForeground(TEXT_DARK);
+        
+        // Notes icon
+        JLabel notesIcon = new JLabel("📋");
+        notesIcon.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 20));
+        notesIcon.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        
+        // Admin Panel button
+        JButton adminButton = new JButton("⚙ Admin Panel");
+        adminButton.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        adminButton.setForeground(Color.WHITE);
+        adminButton.setBackground(PRIMARY_GREEN);
+        adminButton.setBorder(new EmptyBorder(8, 20, 8, 20));
+        adminButton.setFocusPainted(false);
+        adminButton.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        adminButton.addActionListener(e -> getAdminUI().showLoginDialog());
+        
+        // Share icon
+        JLabel shareIcon = new JLabel("↗");
+        shareIcon.setFont(new Font("Segoe UI", Font.BOLD, 20));
+        shareIcon.setForeground(TEXT_GRAY);
+        shareIcon.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        
+        rightPanel.add(userIcon);
+        rightPanel.add(userName);
+        rightPanel.add(Box.createHorizontalStrut(10));
+        rightPanel.add(notesIcon);
+        rightPanel.add(Box.createHorizontalStrut(5));
+        rightPanel.add(adminButton);
+        rightPanel.add(Box.createHorizontalStrut(5));
+        rightPanel.add(shareIcon);
+        
+        header.add(leftPanel, BorderLayout.WEST);
+        header.add(rightPanel, BorderLayout.EAST);
+        
+        return header;
+    }
+    
+    private JPanel createModernChartPanel() {
+        JPanel mainPanel = new JPanel(new BorderLayout(0, 15));
+        mainPanel.setBackground(BACKGROUND_GRAY);
+        
+        // Top card - Chart
+        JPanel chartCard = new JPanel(new BorderLayout(0, 15));
+        chartCard.setBackground(CARD_WHITE);
+        chartCard.setBorder(BorderFactory.createCompoundBorder(
+            new LineBorder(BORDER_LIGHT, 1, true),
+            new EmptyBorder(25, 25, 25, 25)
+        ));
+        
+        // Header with title and price info
+        JPanel headerPanel = new JPanel(new BorderLayout());
+        headerPanel.setBackground(CARD_WHITE);
+        
+        // Left side - Title and commodity info
+        JPanel titlePanel = new JPanel(new GridLayout(2, 1, 0, 8));
+        titlePanel.setBackground(CARD_WHITE);
+        
         JLabel titleLabel = new JLabel("Grafik Harga");
-        titleLabel.setFont(new Font("Segoe UI", Font.BOLD, 16));
+        titleLabel.setFont(new Font("Segoe UI", Font.BOLD, 18));
+        titleLabel.setForeground(TEXT_DARK);
+        
+        JPanel commodityInfoPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+        commodityInfoPanel.setBackground(CARD_WHITE);
         
         selectedCommodityLabel = new JLabel("Beras Premium");
-        selectedCommodityLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        selectedCommodityLabel.setForeground(Color.GRAY);
+        selectedCommodityLabel.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        selectedCommodityLabel.setForeground(TEXT_DARK);
         
-        JPanel titlePanel = UIComponentFactory.createWhitePanel(new BorderLayout());
-        titlePanel.add(titleLabel, BorderLayout.WEST);
-        titlePanel.add(selectedCommodityLabel, BorderLayout.SOUTH);
-        
-        // Price info
-        JPanel priceInfoPanel = UIComponentFactory.createWhitePanel(new FlowLayout(FlowLayout.RIGHT));
-        
-        currentPriceLabel = new JLabel("Rp 15,000");
-        currentPriceLabel.setFont(new Font("Segoe UI", Font.BOLD, 14));
+        categoryBadge = new JLabel("Bahan Pokok");
+        categoryBadge.setFont(new Font("Segoe UI", Font.BOLD, 11));
+        categoryBadge.setForeground(BLUE_ACCENT);
+        categoryBadge.setBackground(BLUE_LIGHT_BG);
+        categoryBadge.setBorder(new EmptyBorder(4, 10, 4, 10));
+        categoryBadge.setOpaque(true);
         
         priceChangeLabel = new JLabel("↗ +3.4%");
         priceChangeLabel.setFont(new Font("Segoe UI", Font.BOLD, 12));
-        priceChangeLabel.setForeground(new Color(220, 53, 69));
+        priceChangeLabel.setForeground(RED_ACCENT);
         
-        priceInfoPanel.add(currentPriceLabel);
-        priceInfoPanel.add(priceChangeLabel);
+        commodityInfoPanel.add(selectedCommodityLabel);
+        commodityInfoPanel.add(categoryBadge);
+        commodityInfoPanel.add(priceChangeLabel);
         
-        titlePanel.add(priceInfoPanel, BorderLayout.EAST);
+        titlePanel.add(titleLabel);
+        titlePanel.add(commodityInfoPanel);
+        
+        // Right side - Current price
+        JPanel pricePanel = new JPanel(new GridLayout(2, 1, 0, 4));
+        pricePanel.setBackground(CARD_WHITE);
+        
+        JLabel priceLabel = new JLabel("Harga Saat Ini", SwingConstants.RIGHT);
+        priceLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        priceLabel.setForeground(TEXT_GRAY);
+        
+        currentPriceLabel = new JLabel("Rp 15.000", SwingConstants.RIGHT);
+        currentPriceLabel.setFont(new Font("Segoe UI", Font.BOLD, 20));
+        currentPriceLabel.setForeground(TEXT_DARK);
+        
+        JLabel perKgLabel = new JLabel("per kg", SwingConstants.RIGHT);
+        perKgLabel.setFont(new Font("Segoe UI", Font.PLAIN, 11));
+        perKgLabel.setForeground(TEXT_GRAY);
+        
+        pricePanel.add(priceLabel);
+        
+        JPanel priceWithUnitPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 0));
+        priceWithUnitPanel.setBackground(CARD_WHITE);
+        priceWithUnitPanel.add(currentPriceLabel);
+        priceWithUnitPanel.add(perKgLabel);
+        pricePanel.add(priceWithUnitPanel);
+        
+        headerPanel.add(titlePanel, BorderLayout.WEST);
+        headerPanel.add(pricePanel, BorderLayout.EAST);
         
         // Chart area
         chartPanel = new CommodityChartPanel(this::getSelectedCommoditySnapshot);
-        chartPanel.setPreferredSize(new Dimension(400, 200));
+        chartPanel.setPreferredSize(new Dimension(750, 250));
+        chartPanel.setBackground(CARD_WHITE);
         
-        // Price detail panel
-        JPanel detailPanel = createPriceDetailPanel();
+        chartCard.add(headerPanel, BorderLayout.NORTH);
+        chartCard.add(chartPanel, BorderLayout.CENTER);
+        
+        // Bottom card - Detail Perubahan Harga
+        JPanel detailCard = new JPanel(new BorderLayout(0, 15));
+        detailCard.setBackground(CARD_WHITE);
+        detailCard.setBorder(BorderFactory.createCompoundBorder(
+            new LineBorder(BORDER_LIGHT, 1, true),
+            new EmptyBorder(25, 25, 25, 25)
+        ));
+        
+        JLabel detailTitle = new JLabel("Detail Perubahan Harga");
+        detailTitle.setFont(new Font("Segoe UI", Font.BOLD, 18));
+        detailTitle.setForeground(TEXT_DARK);
+        
+        // Detail cards panel
+        JPanel detailsPanel = new JPanel(new GridLayout(1, 4, 15, 0));
+        detailsPanel.setBackground(CARD_WHITE);
+        
+        yesterdayPriceCard = new ModernPriceDetailCard("Harga Kemarin", "Rp 14.500", BLUE_LIGHT_BG, BLUE_ACCENT);
+        todayPriceCard = new ModernPriceDetailCard("Harga Hari Ini", "Rp 15.000", GREEN_LIGHT_BG, GREEN_ACCENT);
+        priceDiffCard = new ModernPriceDetailCard("Selisih Harga", "+Rp 500", RED_LIGHT_BG, RED_ACCENT);
+        percentageCard = new ModernPriceDetailCard("Persentase", "+3.4 %", YELLOW_LIGHT_BG, new Color(245, 158, 11));
+        
+        detailsPanel.add(yesterdayPriceCard);
+        detailsPanel.add(todayPriceCard);
+        detailsPanel.add(priceDiffCard);
+        detailsPanel.add(percentageCard);
         
         // Update time
-        updateTimeLabel = new JLabel("Terakhir diperbarui: " + getCurrentDateTime());
+        updateTimeLabel = new JLabel("Terakhir diperbarui: Selasa, 25 November 2025 pukul 17:18");
         updateTimeLabel.setFont(new Font("Segoe UI", Font.PLAIN, 11));
-        updateTimeLabel.setForeground(Color.GRAY);
+        updateTimeLabel.setForeground(TEXT_GRAY);
         
-        panel.add(titlePanel, BorderLayout.NORTH);
-        panel.add(chartPanel, BorderLayout.CENTER);
-        panel.add(detailPanel, BorderLayout.SOUTH);
+        detailCard.add(detailTitle, BorderLayout.NORTH);
+        detailCard.add(detailsPanel, BorderLayout.CENTER);
+        detailCard.add(updateTimeLabel, BorderLayout.SOUTH);
         
-        JPanel bottomPanel = UIComponentFactory.createWhitePanel(new BorderLayout());
-        bottomPanel.add(updateTimeLabel, BorderLayout.SOUTH);
-        panel.add(bottomPanel, BorderLayout.PAGE_END);
+        mainPanel.add(chartCard, BorderLayout.NORTH);
+        mainPanel.add(detailCard, BorderLayout.CENTER);
         
-        return panel;
-    }
-
-    /**
-     * Create price detail panel
-     */
-    private JPanel createPriceDetailPanel() {
-        JPanel panel = UIComponentFactory.createWhitePanel(new GridLayout(1, 4, 10, 10));
-        panel.setBorder(new EmptyBorder(15, 0, 15, 0));
-        
-        yesterdayPriceCard = new PriceDetailCard("Harga Kemarin", "Rp 14,500", new Color(52, 152, 219));
-        todayPriceCard = new PriceDetailCard("Harga Hari Ini", "Rp 15,000", new Color(46, 204, 113));
-        priceDiffCard = new PriceDetailCard("Selisih Harga", "+Rp 500", new Color(231, 76, 60));
-        percentageCard = new PriceDetailCard("Persentase", "+3.4%", new Color(241, 196, 15));
-        
-        panel.add(yesterdayPriceCard);
-        panel.add(todayPriceCard);
-        panel.add(priceDiffCard);
-        panel.add(percentageCard);
-        
-        return panel;
+        return mainPanel;
     }
     
-    /**
-     * Create commodity list panel (right side)
-     */
-    private JPanel createCommodityListPanel() {
-        JPanel panel = UIComponentFactory.createWhitePanel(new BorderLayout(10, 10));
+    private JPanel createModernCommodityListPanel() {
+        JPanel panel = new JPanel(new BorderLayout(0, 15));
+        panel.setBackground(CARD_WHITE);
         panel.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(new Color(230, 230, 230)),
-            new EmptyBorder(15, 15, 15, 15)
+            new LineBorder(BORDER_LIGHT, 1, true),
+            new EmptyBorder(25, 25, 25, 25)
         ));
         
-        // Title
+        // Header
+        JPanel headerPanel = new JPanel(new BorderLayout());
+        headerPanel.setBackground(CARD_WHITE);
+        
         JLabel titleLabel = new JLabel("Daftar Komoditas");
-        titleLabel.setFont(new Font("Segoe UI", Font.BOLD, 16));
+        titleLabel.setFont(new Font("Segoe UI", Font.BOLD, 18));
+        titleLabel.setForeground(TEXT_DARK);
         
-        JPanel titlePanel = UIComponentFactory.createWhitePanel(new BorderLayout());
-        titlePanel.add(titleLabel, BorderLayout.WEST);
+        JPanel updatePanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
+        updatePanel.setBackground(CARD_WHITE);
         
-        JButton updateButton = new JButton("Update");
-        UIComponentFactory.applyFlatButtonStyle(
-            updateButton,
-            new Font("Segoe UI", Font.PLAIN, 11),
-            new Color(52, 152, 219),
-            Color.WHITE
-        );
+        JButton updateButton = new JButton("🔄");
+        updateButton.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 14));
+        updateButton.setBackground(CARD_WHITE);
+        updateButton.setBorder(new EmptyBorder(5, 10, 5, 10));
+        updateButton.setFocusPainted(false);
+        updateButton.setCursor(new Cursor(Cursor.HAND_CURSOR));
         updateButton.addActionListener(e -> requestCommodityList());
         
-        JLabel dateLabel = new JLabel("17-01-03");
-        dateLabel.setFont(new Font("Segoe UI", Font.PLAIN, 11));
-        dateLabel.setForeground(Color.GRAY);
+        JLabel updateLabel = new JLabel("Update:");
+        updateLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        updateLabel.setForeground(TEXT_GRAY);
         
-        JPanel updatePanel = UIComponentFactory.createWhitePanel(new FlowLayout(FlowLayout.RIGHT, 5, 0));
-        updatePanel.add(updateButton);
+        JLabel dateLabel = new JLabel("17.41.03");
+        dateLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        dateLabel.setForeground(TEXT_DARK);
+        
+        updatePanel.add(updateLabel);
         updatePanel.add(dateLabel);
+        updatePanel.add(updateButton);
         
-        titlePanel.add(updatePanel, BorderLayout.EAST);
-        commodityTableManager = new CommodityTableManager();
-        commodityTableManager.setSelectionListener(this::onCommoditySelected);
-        JScrollPane scrollPane = commodityTableManager.createScrollPane();
+        headerPanel.add(titleLabel, BorderLayout.WEST);
+        headerPanel.add(updatePanel, BorderLayout.EAST);
         
-        JPanel reportPanel = UIComponentFactory.createWhitePanel(new BorderLayout(8, 8));
-        reportPanel.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createMatteBorder(10, 0, 0, 0, new Color(245, 245, 245)),
-            new EmptyBorder(10, 0, 0, 0)
-        ));
-
-        JLabel reportLabel = new JLabel("Laporkan Perubahan Harga");
-        reportLabel.setFont(new Font("Segoe UI", Font.BOLD, 12));
-        reportLabel.setForeground(new Color(52, 73, 94));
-        reportPanel.add(reportLabel, BorderLayout.NORTH);
-
-        reportTextArea = new JTextArea(3, 20);
-        reportTextArea.setLineWrap(true);
-        reportTextArea.setWrapStyleWord(true);
-        reportTextArea.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        reportTextArea.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(new Color(220, 220, 220)),
-            new EmptyBorder(6, 8, 6, 8)
-        ));
-        JScrollPane reportScrollPane = new JScrollPane(reportTextArea);
-        reportScrollPane.setBorder(null);
-        reportPanel.add(reportScrollPane, BorderLayout.CENTER);
-
-        JButton sendReportButton = new JButton("Kirim ke Admin");
-        UIComponentFactory.applyFlatButtonStyle(
-            sendReportButton,
-            new Font("Segoe UI", Font.BOLD, 12),
-            new Color(46, 204, 113),
-            Color.WHITE
-        );
-        sendReportButton.setPreferredSize(new Dimension(140, 32));
-        sendReportButton.addActionListener(e -> sendReportToAdmin());
-
-        JPanel buttonContainer = UIComponentFactory.createWhitePanel(new FlowLayout(FlowLayout.RIGHT, 0, 5));
-        buttonContainer.add(sendReportButton);
-        reportPanel.add(buttonContainer, BorderLayout.SOUTH);
+        // Commodity list
+        commodityList = new ModernCommodityList();
+        commodityList.setSelectionListener(this::onCommoditySelected);
+        JScrollPane scrollPane = new JScrollPane(commodityList);
+        scrollPane.setBorder(null);
+        scrollPane.getVerticalScrollBar().setUnitIncrement(16);
         
-        panel.add(titlePanel, BorderLayout.NORTH);
+        panel.add(headerPanel, BorderLayout.NORTH);
         panel.add(scrollPane, BorderLayout.CENTER);
-        panel.add(reportPanel, BorderLayout.SOUTH);
         
         return panel;
     }
     
+    private JPanel createReportSection() {
+        JPanel panel = new JPanel(new BorderLayout(15, 0));
+        panel.setBackground(CARD_WHITE);
+        panel.setBorder(BorderFactory.createCompoundBorder(
+            new LineBorder(BORDER_LIGHT, 1, true),
+            new EmptyBorder(20, 25, 20, 25)
+        ));
+        
+        // Icon with background
+        JPanel iconContainer = new JPanel(new BorderLayout());
+        iconContainer.setBackground(new Color(219, 234, 254));
+        iconContainer.setPreferredSize(new Dimension(50, 50));
+        iconContainer.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        
+        JLabel iconLabel = new JLabel("📋");
+        iconLabel.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 30));
+        iconLabel.setHorizontalAlignment(SwingConstants.CENTER);
+        iconContainer.add(iconLabel, BorderLayout.CENTER);
+        
+        // Text content
+        JPanel textPanel = new JPanel(new GridLayout(2, 1, 0, 5));
+        textPanel.setBackground(CARD_WHITE);
+        
+        JLabel titleLabel = new JLabel("Ada Keluhan atau Saran?");
+        titleLabel.setFont(new Font("Segoe UI", Font.BOLD, 15));
+        titleLabel.setForeground(TEXT_DARK);
+        
+        JLabel descLabel = new JLabel("Klik tombol laporan untuk menyampaikan keluhan, saran, atau informasi seputar pasar kepada admin.");
+        descLabel.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+        descLabel.setForeground(TEXT_GRAY);
+        
+        textPanel.add(titleLabel);
+        textPanel.add(descLabel);
+        
+        // Button
+        JButton reportButton = new JButton("📝 Buat Laporan");
+        reportButton.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        reportButton.setForeground(Color.WHITE);
+        reportButton.setBackground(BLUE_ACCENT);
+        reportButton.setBorder(new EmptyBorder(10, 25, 10, 25));
+        reportButton.setFocusPainted(false);
+        reportButton.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        reportButton.addActionListener(e -> showReportDialog());
+        
+        panel.add(iconContainer, BorderLayout.WEST);
+        panel.add(textPanel, BorderLayout.CENTER);
+        panel.add(reportButton, BorderLayout.EAST);
+        
+        return panel;
+    }
     
+    private void showReportDialog() {
+        JDialog dialog = new JDialog(this, "Buat Laporan", true);
+        dialog.setLayout(new BorderLayout(15, 15));
+        dialog.setSize(500, 300);
+        dialog.setLocationRelativeTo(this);
+        
+        JPanel contentPanel = new JPanel(new BorderLayout(10, 10));
+        contentPanel.setBorder(new EmptyBorder(20, 20, 20, 20));
+        contentPanel.setBackground(CARD_WHITE);
+        
+        JLabel titleLabel = new JLabel("Laporkan Perubahan Harga atau Keluhan");
+        titleLabel.setFont(new Font("Segoe UI", Font.BOLD, 14));
+        
+        JTextArea reportArea = new JTextArea(8, 40);
+        reportArea.setLineWrap(true);
+        reportArea.setWrapStyleWord(true);
+        reportArea.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+        reportArea.setBorder(BorderFactory.createCompoundBorder(
+            new LineBorder(BORDER_LIGHT),
+            new EmptyBorder(10, 10, 10, 10)
+        ));
+        
+        JScrollPane scrollPane = new JScrollPane(reportArea);
+        scrollPane.setBorder(null);
+        
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
+        buttonPanel.setBackground(CARD_WHITE);
+        
+        JButton cancelButton = new JButton("Batal");
+        cancelButton.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+        cancelButton.setBackground(new Color(243, 244, 246));
+        cancelButton.setForeground(TEXT_DARK);
+        cancelButton.setBorder(new EmptyBorder(8, 20, 8, 20));
+        cancelButton.setFocusPainted(false);
+        cancelButton.addActionListener(e -> dialog.dispose());
+        
+        JButton sendButton = new JButton("Kirim ke Admin");
+        sendButton.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        sendButton.setBackground(GREEN_ACCENT);
+        sendButton.setForeground(Color.WHITE);
+        sendButton.setBorder(new EmptyBorder(8, 20, 8, 20));
+        sendButton.setFocusPainted(false);
+        sendButton.addActionListener(e -> {
+            String text = reportArea.getText().trim();
+            if (!text.isEmpty()) {
+                sendReportToAdmin(text);
+                dialog.dispose();
+            }
+        });
+        
+        buttonPanel.add(cancelButton);
+        buttonPanel.add(sendButton);
+        
+        contentPanel.add(titleLabel, BorderLayout.NORTH);
+        contentPanel.add(scrollPane, BorderLayout.CENTER);
+        contentPanel.add(buttonPanel, BorderLayout.SOUTH);
+        
+        dialog.add(contentPanel);
+        dialog.setVisible(true);
+    }
     
-    /**
-     * Handle commodity selection from table
-     */
     private void onCommoditySelected(String commodityId) {
         updateSelectedCommodity(commodityId, false);
     }
@@ -319,33 +525,31 @@ public class PasarLiveGUI extends JFrame {
         selectedCommodity = commodity;
         selectedCommodityId = commodityId;
         updateChartAndDetails();
-        if (syncUserTableSelection && commodityTableManager != null) {
-            commodityTableManager.selectCommodity(commodityId);
+        if (syncUserTableSelection && commodityList != null) {
+            commodityList.selectCommodity(commodityId);
         }
         if (adminUI != null) {
             adminUI.repaintChart();
         }
     }
     
-    /**
-     * Update chart and detail panels based on selected commodity
-     */
     private void updateChartAndDetails() {
         if (selectedCommodity == null) return;
         
-        // Update commodity name label
+        // Update commodity info
         selectedCommodityLabel.setText(selectedCommodity.name);
+        categoryBadge.setText(selectedCommodity.category);
         
         // Update current price
         currentPriceLabel.setText(String.format("Rp %,d", selectedCommodity.price));
         
-        // Update price change with trend indicator
+        // Update price change
         String changeSymbol = selectedCommodity.change > 0 ? "↗" : (selectedCommodity.change < 0 ? "↘" : "—");
-        String changeText = String.format("%s %.1f%%", changeSymbol, Math.abs(selectedCommodity.change));
+        String changeText = String.format("%s %+.1f%%", changeSymbol, selectedCommodity.change);
         priceChangeLabel.setText(changeText);
         
-        Color changeColor = selectedCommodity.change > 0 ? new Color(220, 53, 69) : 
-                           (selectedCommodity.change < 0 ? new Color(46, 204, 113) : Color.GRAY);
+        Color changeColor = selectedCommodity.change > 0 ? RED_ACCENT : 
+                           (selectedCommodity.change < 0 ? GREEN_ACCENT : TEXT_GRAY);
         priceChangeLabel.setForeground(changeColor);
         
         // Update detail cards
@@ -354,22 +558,14 @@ public class PasarLiveGUI extends JFrame {
         int priceDiff = todayPrice - yesterdayPrice;
         double percentage = selectedCommodity.change;
         
-        if (yesterdayPriceCard != null) {
-            yesterdayPriceCard.setValue(String.format("Rp %,d", yesterdayPrice));
-        }
-        if (todayPriceCard != null) {
-            todayPriceCard.setValue(String.format("Rp %,d", todayPrice));
-        }
+        yesterdayPriceCard.setValue(String.format("Rp %,d", yesterdayPrice));
+        todayPriceCard.setValue(String.format("Rp %,d", todayPrice));
         
         String diffSymbol = priceDiff >= 0 ? "+" : "";
-        if (priceDiffCard != null) {
-            priceDiffCard.setValue(String.format("%sRp %,d", diffSymbol, priceDiff));
-        }
+        priceDiffCard.setValue(String.format("%sRp %,d", diffSymbol, priceDiff));
         
         String percentSymbol = percentage >= 0 ? "+" : "";
-        if (percentageCard != null) {
-            percentageCard.setValue(String.format("%s%.1f%%", percentSymbol, percentage));
-        }
+        percentageCard.setValue(String.format("%s%.1f %%", percentSymbol, percentage));
         
         // Repaint chart
         chartPanel.refreshChart();
@@ -386,10 +582,10 @@ public class PasarLiveGUI extends JFrame {
         return dataModel.getSortedCommodities();
     }
 
-    private void refreshUserCommodityTable() {
+    private void refreshCommodityList() {
         List<MarketDataModel.CommodityData> sorted = getSortedCommodities();
-        if (commodityTableManager != null) {
-            commodityTableManager.refreshRows(sorted, selectedCommodityId);
+        if (commodityList != null) {
+            commodityList.refreshList(sorted, selectedCommodityId);
         }
         if (adminUI != null) {
             adminUI.refreshCommodityTable();
@@ -414,7 +610,7 @@ public class PasarLiveGUI extends JFrame {
         MarketDataModel.CommodityData commodity = dataModel.addCommodity(name, price, category);
         selectedCommodity = commodity;
         selectedCommodityId = commodity.id;
-        refreshUserCommodityTable();
+        refreshCommodityList();
         updateChartAndDetails();
         return commodity;
     }
@@ -428,7 +624,7 @@ public class PasarLiveGUI extends JFrame {
         if (selectedCommodity != null && selectedCommodity.id.equals(commodityId)) {
             selectedCommodity = commodity;
         }
-        refreshUserCommodityTable();
+        refreshCommodityList();
         updateChartAndDetails();
         return commodity;
     }
@@ -441,7 +637,7 @@ public class PasarLiveGUI extends JFrame {
                 selectedCommodity = fallback;
                 selectedCommodityId = fallback != null ? fallback.id : null;
             }
-            refreshUserCommodityTable();
+            refreshCommodityList();
             updateChartAndDetails();
         }
         return removed;
@@ -463,9 +659,6 @@ public class PasarLiveGUI extends JFrame {
         return dataModel.updateReportReadState(index, read);
     }
     
-    /**
-     * Connect to server
-     */
     private void connectToServer() {
         new Thread(() -> {
             try {
@@ -476,8 +669,6 @@ public class PasarLiveGUI extends JFrame {
                 connected = true;
                 
                 System.out.println("Connected to server!");
-                
-                // Start receiving messages
                 receiveMessages();
                 
             } catch (IOException e) {
@@ -492,9 +683,6 @@ public class PasarLiveGUI extends JFrame {
         }).start();
     }
     
-    /**
-     * Receive messages from server
-     */
     private void receiveMessages() {
         try {
             while (connected) {
@@ -510,9 +698,6 @@ public class PasarLiveGUI extends JFrame {
         }
     }
     
-    /**
-     * Handle message from server
-     */
     private void handleMessage(Message message) {
         SwingUtilities.invokeLater(() -> {
             if (message.getType() == Message.Type.BROADCAST &&
@@ -522,9 +707,6 @@ public class PasarLiveGUI extends JFrame {
         });
     }
 
-    /**
-     * Handle price update broadcast
-     */
     private void handlePriceUpdate(Message message) {
         String commodityName = (String) message.getData("commodityName");
         Object newPriceObj = message.getData("newPrice");
@@ -558,23 +740,8 @@ public class PasarLiveGUI extends JFrame {
         }
     }
     
-    /**
-     * Show admin dashboard after successful login
-     */
-
-    /**
-     * Send textual report to admin
-     */
-    private void sendReportToAdmin() {
-        if (reportTextArea == null) {
-            return;
-        }
-        String reportText = reportTextArea.getText().trim();
-        if (reportText.isEmpty()) {
-            JOptionPane.showMessageDialog(this,
-                "Isi pesan laporan terlebih dahulu.",
-                "Validasi",
-                JOptionPane.WARNING_MESSAGE);
+    private void sendReportToAdmin(String reportText) {
+        if (reportText == null || reportText.trim().isEmpty()) {
             return;
         }
         if (!connected) {
@@ -594,13 +761,15 @@ public class PasarLiveGUI extends JFrame {
             }
             output.writeObject(reportMessage);
             output.flush();
+            
             JOptionPane.showMessageDialog(this,
                 "Laporan berhasil dikirim ke admin.",
                 "Berhasil",
                 JOptionPane.INFORMATION_MESSAGE);
+            
             String commodityName = selectedCommodity != null ? selectedCommodity.name : "Umum";
             addReportEntry(new MarketDataModel.ReportEntry(commodityName, reportText, false));
-            reportTextArea.setText("");
+            
         } catch (IOException e) {
             System.err.println("Error sending report: " + e.getMessage());
             JOptionPane.showMessageDialog(this,
@@ -610,23 +779,206 @@ public class PasarLiveGUI extends JFrame {
         }
     }
     
-    
-    /**
-     * Get current date time
-     */
     private String getCurrentDateTime() {
         SimpleDateFormat sdf = new SimpleDateFormat("EEEE, dd MMMM yyyy 'pukul' HH:mm", new Locale("id", "ID"));
         return sdf.format(new Date());
     }
     
-    /**
-     * Custom table cell renderer
-     */
-    // Table uses the default renderer to keep code and dependencies minimal.
+    // Inner class for modern price detail card with enhanced design
+    private static class ModernPriceDetailCard extends JPanel {
+        private JLabel valueLabel;
+        
+        public ModernPriceDetailCard(String title, String value, Color bgColor, Color accentColor) {
+            setLayout(new BorderLayout(0, 10));
+            setBackground(bgColor);
+            setBorder(BorderFactory.createCompoundBorder(
+                new LineBorder(bgColor.darker(), 1, true),
+                new EmptyBorder(18, 18, 18, 18)
+            ));
+            
+            JLabel titleLabel = new JLabel(title);
+            titleLabel.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+            titleLabel.setForeground(TEXT_GRAY);
+            
+            valueLabel = new JLabel(value);
+            valueLabel.setFont(new Font("Segoe UI", Font.BOLD, 18));
+            valueLabel.setForeground(accentColor);
+            
+            add(titleLabel, BorderLayout.NORTH);
+            add(valueLabel, BorderLayout.CENTER);
+        }
+        
+        public void setValue(String value) {
+            valueLabel.setText(value);
+        }
+    }
     
-    /**
-     * Main method
-     */
+    // Inner class for modern commodity list
+    private static class ModernCommodityList extends JPanel {
+        private List<CommodityCard> cards = new java.util.ArrayList<>();
+        private CommoditySelectionListener listener;
+        private String selectedId;
+        
+        public ModernCommodityList() {
+            setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
+            setBackground(CARD_WHITE);
+        }
+        
+        public void setSelectionListener(CommoditySelectionListener listener) {
+            this.listener = listener;
+        }
+        
+        public void refreshList(List<MarketDataModel.CommodityData> commodities, String selectedId) {
+            this.selectedId = selectedId;
+            removeAll();
+            cards.clear();
+            
+            for (MarketDataModel.CommodityData commodity : commodities) {
+                CommodityCard card = new CommodityCard(commodity);
+                card.setSelected(commodity.id.equals(selectedId));
+                card.addMouseListener(new java.awt.event.MouseAdapter() {
+                    @Override
+                    public void mouseClicked(java.awt.event.MouseEvent e) {
+                        selectCommodity(commodity.id);
+                        if (listener != null) {
+                            listener.onCommoditySelected(commodity.id);
+                        }
+                    }
+                    
+                    @Override
+                    public void mouseEntered(java.awt.event.MouseEvent e) {
+                        if (!card.getCommodityId().equals(selectedId)) {
+                            card.setHovered(true);
+                        }
+                    }
+                    
+                    @Override
+                    public void mouseExited(java.awt.event.MouseEvent e) {
+                        card.setHovered(false);
+                    }
+                });
+                cards.add(card);
+                add(card);
+                add(Box.createVerticalStrut(10));
+            }
+            
+            revalidate();
+            repaint();
+        }
+        
+        public void selectCommodity(String commodityId) {
+            selectedId = commodityId;
+            for (CommodityCard card : cards) {
+                card.setSelected(card.getCommodityId().equals(commodityId));
+            }
+        }
+        
+        private static class CommodityCard extends JPanel {
+            private final String commodityId;
+            private boolean selected = false;
+            private boolean hovered = false;
+            
+            public CommodityCard(MarketDataModel.CommodityData commodity) {
+                this.commodityId = commodity.id;
+                setLayout(new BorderLayout(10, 8));
+                setBackground(CARD_WHITE);
+                setBorder(BorderFactory.createCompoundBorder(
+                    new LineBorder(BORDER_LIGHT, 1, true),
+                    new EmptyBorder(12, 15, 12, 15)
+                ));
+                setCursor(new Cursor(Cursor.HAND_CURSOR));
+                setMaximumSize(new Dimension(Integer.MAX_VALUE, 80));
+                
+                // Left side - Name and category
+                JPanel leftPanel = new JPanel(new GridLayout(2, 1, 0, 4));
+                leftPanel.setBackground(CARD_WHITE);
+                
+                JLabel nameLabel = new JLabel(commodity.name);
+                nameLabel.setFont(new Font("Segoe UI", Font.BOLD, 14));
+                nameLabel.setForeground(TEXT_DARK);
+                
+                JLabel categoryLabel = new JLabel(commodity.category);
+                categoryLabel.setFont(new Font("Segoe UI", Font.PLAIN, 11));
+                categoryLabel.setForeground(TEXT_GRAY);
+                
+                leftPanel.add(nameLabel);
+                leftPanel.add(categoryLabel);
+                
+                // Right side - Price and change
+                JPanel rightPanel = new JPanel(new GridLayout(2, 1, 0, 4));
+                rightPanel.setBackground(CARD_WHITE);
+                
+                JPanel pricePanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 0));
+                pricePanel.setBackground(CARD_WHITE);
+                
+                JLabel priceLabel = new JLabel(String.format("Rp %,d", commodity.price));
+                priceLabel.setFont(new Font("Segoe UI", Font.BOLD, 14));
+                priceLabel.setForeground(TEXT_DARK);
+                
+                JLabel unitLabel = new JLabel("/kg");
+                unitLabel.setFont(new Font("Segoe UI", Font.PLAIN, 11));
+                unitLabel.setForeground(TEXT_GRAY);
+                
+                pricePanel.add(priceLabel);
+                pricePanel.add(unitLabel);
+                
+                String changeSymbol = commodity.change > 0 ? "↗" : (commodity.change < 0 ? "↘" : "—");
+                String changeText = String.format("%s %+.1f%%", changeSymbol, commodity.change);
+                JLabel changeLabel = new JLabel(changeText, SwingConstants.RIGHT);
+                changeLabel.setFont(new Font("Segoe UI", Font.BOLD, 12));
+                Color changeColor = commodity.change > 0 ? RED_ACCENT : 
+                                   (commodity.change < 0 ? GREEN_ACCENT : TEXT_GRAY);
+                changeLabel.setForeground(changeColor);
+                
+                rightPanel.add(pricePanel);
+                rightPanel.add(changeLabel);
+                
+                add(leftPanel, BorderLayout.WEST);
+                add(rightPanel, BorderLayout.EAST);
+            }
+            
+            public String getCommodityId() {
+                return commodityId;
+            }
+            
+            public void setSelected(boolean selected) {
+                this.selected = selected;
+                updateAppearance();
+            }
+            
+            public void setHovered(boolean hovered) {
+                this.hovered = hovered;
+                updateAppearance();
+            }
+            
+            private void updateAppearance() {
+                if (selected) {
+                    setBorder(BorderFactory.createCompoundBorder(
+                        new LineBorder(PRIMARY_GREEN, 2, true),
+                        new EmptyBorder(11, 14, 11, 14)
+                    ));
+                    setBackground(new Color(236, 253, 245));
+                } else if (hovered) {
+                    setBorder(BorderFactory.createCompoundBorder(
+                        new LineBorder(BORDER_LIGHT, 1, true),
+                        new EmptyBorder(12, 15, 12, 15)
+                    ));
+                    setBackground(new Color(249, 250, 251));
+                } else {
+                    setBorder(BorderFactory.createCompoundBorder(
+                        new LineBorder(BORDER_LIGHT, 1, true),
+                        new EmptyBorder(12, 15, 12, 15)
+                    ));
+                    setBackground(CARD_WHITE);
+                }
+            }
+        }
+    }
+    
+    private interface CommoditySelectionListener {
+        void onCommoditySelected(String commodityId);
+    }
+    
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> {
             PasarLiveGUI gui = new PasarLiveGUI();
