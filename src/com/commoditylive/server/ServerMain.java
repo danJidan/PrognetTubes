@@ -25,10 +25,6 @@ public class ServerMain {
                 broadcastThread.start();
             }
 
-            // AUTO UPDATE PRICE DIMATIKAN - Update manual saja via admin UI
-            // simulationThread = new PriceSimulationThread();
-            // simulationThread.start();
-            
             System.out.println("✅ Server started on port " + PORT);
             System.out.println("   Waiting for clients...");
             System.out.println("   (Auto price update: DISABLED - Manual update only)");
