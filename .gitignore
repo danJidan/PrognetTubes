@@ -8,3 +8,6 @@
 # System files
 Thumbs.db
 .DS_Store
+
+# Database files
+*.db
